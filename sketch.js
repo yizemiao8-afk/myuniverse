@@ -140,7 +140,7 @@ function setStatus(msg) {
 //  PART B — 作品：《梦幻星空 · 星座法阵》
 // ---------------------------------------------------------------------
 
-const SKY_DEEP = "#1c2c5e";  // 深邃的蓝黑夜空（参考《宇宙星云》壁纸的主题色）
+const SKY_DEEP = "#062632";  // 深邃的深海青（参考壁纸《海洋深处 deep-sea》的主题色）
 const MAX_STARS = 300;       // 星空中星星数量的上限
 
 let stars = [];        // 星星：{x, y, px, py, homeX, homeY, r, phase, seed, tx, ty, hasTarget}
@@ -151,10 +151,33 @@ let summoned = false;  // 星座是否被召唤（连线是否渐显）
 let lastGesture = {};
 let showInfo = true;
 
+// ---------- 深海视差背景（图层全部来自壁纸《海洋深处 deep-sea》，深度与着色照搬原场景） ----------
+const BG_W = 5760, BG_H = 3240; // 壁纸的设计分辨率，所有图层坐标都基于它
+const bgImg = {};               // 预加载的图层图片
+// 每层：图片、视差深度（远处小、近处大）、原场景的颜色乘算、若干实例 [中心x, 中心y, 缩放, 设计宽, 设计高]
+const BG_LAYERS = [
+  { img: "p3",    depth: 0.10, tint: null,            items: [[2880, 1620, 1.11581, 5760, 3240]] },          // 主背景：一整片海水
+  { img: "mt1",   depth: 0.10, tint: [20, 107, 150],  items: [[738.56, 1280.87, 1.04279, 1890, 737]] },      // 远处模糊的礁石
+  { img: "mt1",   depth: 0.10, tint: [25, 120, 169],  items: [[5129.17, 1113.97, 1, 1890, 737]] },
+  { img: "part",  depth: 0.20, tint: null,            items: [[2557.49, 1439.18, 0.42093, 782, 820], [892.82, 1285.13, 0.42093, 782, 820], [1621.99, 1726.22, 0.42093, 782, 820]] }, // 枯枝珊瑚
+  { img: "ship",  depth: 0.20, tint: [36, 36, 36],    items: [[4176.64, 1196.34, 1.11581, 1280, 953]] },     // 沉船
+  { img: "mt2",   depth: 0.20, tint: [41, 166, 219],  items: [[6922.42, 912.05, 3.25838, 1890, 702], [-643.46, 899.22, 3.25838, 1890, 702], [3036.77, 954.85, 3.11361, 1890, 702]] }, // 近处的礁石山脉
+  { img: "part",  depth: 0.30, tint: null,            items: [[552.04, 533.05, 1.95547, 782, 820], [492.12, 524.49, 1.60803, 782, 820]] }, // 最贴近眼睛的剪影
+  { img: "smoke", depth: 0,    tint: [26, 28, 28],    items: [[2978.83, 1462.22, 3.34524, 1920, 1080]] },    // 罩在整个海底的暗雾
+];
+
+function preload() {
+  bgImg.p3 = loadImage("bg/p3.jpg");
+  bgImg.mt1 = loadImage("bg/mt1.png");
+  bgImg.mt2 = loadImage("bg/mt2.png");
+  bgImg.part = loadImage("bg/part.png");
+  bgImg.ship = loadImage("bg/ship.png");
+  bgImg.smoke = loadImage("bg/smoke.png");
+}
+
 function setup() {
   createCanvas(windowWidth, windowHeight);
   magicCircle = { x: width / 2, y: height / 2, R: min(width, height) * 0.32, rot: 0, open: false };
-  paintNebula();
   initStars();
   initBokehs();
   layoutConstellations();
@@ -164,7 +187,7 @@ function setup() {
 // 铺一片新星空：星星随机散布，各自有大小、颜色、闪烁节奏和“家”
 function initStars() {
   stars = [];
-  const n = 270;
+  const n = min(width, height) < 600 ? 170 : 270; // 小屏少撒一点星星，手机更流畅
   for (let i = 0; i < n; i++) stars.push(newStar(random(width), random(height), random(1.5, 4.5)));
 }
 
@@ -221,6 +244,8 @@ function layoutConstellations() {
 function startExperience() {
   video = createCapture(VIDEO);
   video.size(640, 480);
+  video.elt.setAttribute("playsinline", ""); // 手机浏览器里不跳出全屏播放器
+  video.elt.setAttribute("muted", "");
   video.hide();
 
   select("#intro").hide();
@@ -241,9 +266,10 @@ function draw() {
     if (hands.length === 0) lastGesture = {};
   }
 
-  // 2. 夜空：深蓝底 + 预渲染的星云带
+  // 2. 深海背景：青黑底 + 多层视差（手挥动 / 鼠标移动 / 自动漂移都会带着背景分层移动）
   background(SKY_DEEP);
-  image(nebula, 0, 0);
+  updateParallax();
+  drawBackground();
   if (started && showCamera) drawCamera();
 
   // 3. 星星
@@ -485,16 +511,17 @@ function onGesture(g, hand) {
   if (g === "Open_Palm" && magicCircle.open === false) {
     magicCircle.open = true;
   }
-  // 4. 👍 拇指向上：漫天星星拖着光尾向星座汇聚，连线渐显
+  // 4. 👍 拇指向上：漫天星星拖着光尾向星座汇聚；再比一次 👍 取消汇聚
   if (g === "Thumb_Up") {
-    summonConstellation();
+    if (summoned) unsummonConstellation();
+    else summonConstellation();
   }
   // 5. ✊ 握拳：一切向中心收拢归寂
   if (g === "Closed_Fist") {
     dismissAll();
   }
-  // 6. 🤟 我爱你：星座消散，切换到下一个星座
-  if (g === "ILoveYou") {
+  // 6. 👎 拇指向下：星座消散，切换到下一个星座
+  if (g === "Thumb_Down") {
     nextConstellation();
   }
   // 7. ✌️ 剪刀手：换一片新星空
@@ -527,6 +554,12 @@ function summonConstellation() {
   summoned = true;
 }
 
+// 👍 再比一次：取消汇聚，星星散开回家（法阵保持展开）
+function unsummonConstellation() {
+  for (const s of stars) s.hasTarget = false;
+  summoned = false;
+}
+
 // ✊ 收拢归寂：星星散开回家，法阵收拢，星座消散
 function dismissAll() {
   for (const s of stars) s.hasTarget = false;
@@ -534,7 +567,7 @@ function dismissAll() {
   magicCircle.open = false;
 }
 
-// 🤟 星座消散，切换到下一个星座
+// 👎 星座消散，切换到下一个星座
 function nextConstellation() {
   for (const s of stars) s.hasTarget = false;
   summoned = false;
@@ -598,37 +631,54 @@ function drawShootingStar() {
   }
 }
 
-// ---------- 星云背景（参考壁纸《宇宙星云》：深蓝夜空 + 一条斜穿的蓝紫色星河） ----------
-let nebula; // 预渲染的星云，只画一次，每帧直接贴图，不耗性能
+// ---------- 深海视差背景：手 / 鼠标 / 自动漂移驱动，近处动得多、远处动得少 ----------
+let parX = 0, parY = 0;   // 平滑后的视差量（-1 ~ 1）
+let lastMouseMove = -999; // 上一次鼠标移动是哪一帧（没手的时候看鼠标，都没有就缓缓自动漂移）
 
-function paintNebula() {
-  nebula = createGraphics(width, height);
-  nebula.background(28, 44, 94); // 参考壁纸的主题深蓝
-  nebula.noStroke();
-  // 星河带：一条微微倾斜、穿过画面中央的云雾带（高斯散布，中间密两边稀）
-  const tilt = 0.12;
-  for (let i = 0; i < 140; i++) {
-    const x = random(-50, width + 50);
-    const bandY = height * 0.55 + (x - width / 2) * tilt;
-    const y = bandY + randomGaussian() * height * 0.14;
-    const d = random(width * 0.03, width * 0.16);
-    const roll = random();
-    let c;
-    if (roll < 0.18) c = [215, 228, 255];     // 云雾里的亮白核
-    else if (roll < 0.5) c = [95, 125, 215];  // 蓝
-    else if (roll < 0.8) c = [115, 105, 215]; // 蓝紫
-    else c = [45, 65, 140];                   // 深蓝
-    // 由外到内叠几层，做出柔边云雾
-    for (let k = 4; k >= 1; k--) {
-      nebula.fill(c[0], c[1], c[2], 3.2 + (4 - k) * 1.6);
-      nebula.circle(x, y, (d * k) / 4);
+function mouseMoved() {
+  lastMouseMove = frameCount;
+}
+
+function updateParallax() {
+  let tx, ty;
+  if (started && hands.length > 0) {
+    // 手：用掌心位置当“眼睛”——手往右挥，近处的图层就往左让，像真的在海底转头
+    const palm = hands[0].points[9];
+    tx = (0.5 - palm.x / width) * 2;
+    ty = (0.5 - palm.y / height) * 2;
+  } else if (frameCount - lastMouseMove < 180) {
+    // 鼠标：最近 3 秒内动过鼠标就跟着鼠标
+    tx = (0.5 - mouseX / width) * 2;
+    ty = (0.5 - mouseY / height) * 2;
+  } else {
+    // 什么都没有：轻轻自动漂移，画面始终是活的
+    tx = sin(frameCount * 0.003) * 0.35;
+    ty = cos(frameCount * 0.0023) * 0.25;
+  }
+  parX = lerp(parX, tx, 0.06);
+  parY = lerp(parY, ty, 0.06);
+}
+
+function drawBackground() {
+  const s = max(width / BG_W, height / BG_H); // cover：等比放大到铺满窗口（手机竖屏也不留空）
+  const str = min(width, height) * 0.16;      // 视差强度：屏幕越大动得越明显
+  push();
+  imageMode(CENTER);
+  for (const L of BG_LAYERS) {
+    const img = bgImg[L.img];
+    if (!img) continue;
+    const ox = parX * L.depth * str;
+    const oy = parY * L.depth * str * 0.7;
+    const bleed = 1.06 + L.depth * 0.15; // 每层多画一圈，移动时不会露出边缘
+    if (L.tint) tint(L.tint[0], L.tint[1], L.tint[2]); // 照搬原壁纸的颜色乘算
+    else noTint();
+    for (const it of L.items) {
+      const x = (it[0] - BG_W / 2) * s + width / 2 + ox;
+      const y = (it[1] - BG_H / 2) * s + height / 2 + oy;
+      image(img, x, y, it[3] * it[2] * s * bleed, it[4] * it[2] * s * bleed);
     }
   }
-  // 带外再撒一点稀疏的暗云，过渡更自然
-  for (let i = 0; i < 40; i++) {
-    nebula.fill(40, 60, 130, 3);
-    nebula.circle(random(width), random(height), random(width * 0.05, width * 0.2));
-  }
+  pop();
 }
 
 // ---------- 失焦光斑（参考壁纸里那些大颗的柔光点） ----------
@@ -637,7 +687,8 @@ let bokehs = [];
 function initBokehs() {
   bokehs = [];
   const tints = [[120, 170, 255], [90, 220, 220], [160, 150, 255], [200, 225, 255]];
-  for (let i = 0; i < 9; i++) {
+  const m = min(width, height) < 600 ? 6 : 9; // 小屏少几个光斑
+  for (let i = 0; i < m; i++) {
     bokehs.push({
       x: random(width), y: random(height * 0.9),
       r: random(10, 26),
@@ -699,7 +750,6 @@ function windowResized() {
   magicCircle.x = width / 2;
   magicCircle.y = height / 2;
   magicCircle.R = min(width, height) * 0.32;
-  paintNebula();
   initStars();
   initBokehs();
   layoutConstellations();
