@@ -260,6 +260,9 @@ function draw() {
     drawStar(s);
   }
 
+  // 流星：偶尔从天空划过
+  drawShootingStar();
+
   // 4. 法阵缓缓旋转
   if (magicCircle.open) magicCircle.rot += 0.06;
   drawMagicCircle(magicCircle);
@@ -521,6 +524,56 @@ function resetSky() {
   for (const s of stars) s.hasTarget = false;
   summoned = false;
   initStars();
+}
+
+// ---------- 加分项：流星 ----------
+let meteor = null; // 流星：{x, y, vx, vy, life, maxLife}，没有流星时是 null
+
+// 每 300 帧随机从天空划过一次流星：一道从亮到暗的渐隐斜线，头部一个亮点
+function drawShootingStar() {
+  // 到了时间且上一颗已经消失，就生成一颗新流星（位置、方向、速度都随机）
+  if (meteor === null && frameCount % 300 === 0) {
+    let a = random(PI * 0.15, PI * 0.35); // 斜向下的角度
+    let speed = random(9, 14);
+    meteor = {
+      x: random(width * 0.1, width * 0.9),
+      y: random(height * 0.05, height * 0.3),
+      vx: cos(a) * speed * (random() < 0.5 ? 1 : -1), // 一半机会向左，一半向右
+      vy: sin(a) * speed,
+      life: 0,
+      maxLife: 45,
+    };
+  }
+  if (meteor === null) return;
+
+  // 流星向前飞
+  meteor.x += meteor.vx;
+  meteor.y += meteor.vy;
+  meteor.life++;
+  // 亮度：越飞越暗
+  let fade = 1 - meteor.life / meteor.maxLife;
+
+  // 尾巴：一段一段从亮到暗拼出渐隐的斜线
+  let tail = 14;
+  for (let i = 0; i < tail; i++) {
+    let t1 = i / tail;
+    let t2 = (i + 1) / tail;
+    stroke(200, 220, 255, 160 * fade * (1 - t1));
+    strokeWeight(2 * (1 - t1) + 0.5);
+    line(meteor.x - meteor.vx * t1 * 6, meteor.y - meteor.vy * t1 * 6,
+         meteor.x - meteor.vx * t2 * 6, meteor.y - meteor.vy * t2 * 6);
+  }
+  // 头部一个亮点，带一小圈光晕
+  noStroke();
+  fill(200, 225, 255, 90 * fade);
+  circle(meteor.x, meteor.y, 10);
+  fill(255, 250, 235, 220 * fade);
+  circle(meteor.x, meteor.y, 4);
+
+  // 飞完或飞出画面就消失
+  if (meteor.life >= meteor.maxLife || meteor.x < -100 || meteor.x > width + 100 || meteor.y > height + 100) {
+    meteor = null;
+  }
 }
 
 // 叮——星星越多，音越高
