@@ -140,7 +140,7 @@ function setStatus(msg) {
 //  PART B — 作品：《梦幻星空 · 星座法阵》
 // ---------------------------------------------------------------------
 
-const SKY_DEEP = "#062632";  // 深邃的深海青（参考壁纸《海洋深处 deep-sea》的主题色）
+const SKY_DEEP = "#05122e";  // 深邃的星空蓝黑（参考壁纸《Starry Sky︱星空》的夜空底色）
 const MAX_STARS = 300;       // 星空中星星数量的上限
 
 let stars = [];        // 星星：{x, y, px, py, homeX, homeY, r, phase, seed, tx, ty, hasTarget}
@@ -151,28 +151,39 @@ let summoned = false;  // 星座是否被召唤（连线是否渐显）
 let lastGesture = {};
 let showInfo = true;
 
-// ---------- 深海视差背景（图层全部来自壁纸《海洋深处 deep-sea》，深度与着色照搬原场景） ----------
-const BG_W = 5760, BG_H = 3240; // 壁纸的设计分辨率，所有图层坐标都基于它
+// ---------- 星空视差背景（图层全部来自壁纸《Starry Sky︱星空》，深度照搬原场景） ----------
+const BG_W = 1920, BG_H = 1080; // 壁纸的设计分辨率，所有图层坐标都基于它
 const bgImg = {};               // 预加载的图层图片
-// 每层：图片、视差深度（远处小、近处大）、原场景的颜色乘算、若干实例 [中心x, 中心y, 缩放, 设计宽, 设计高]
+// 每层：图片、视差深度（远处小、近处大）、可选 blend/alpha、若干实例 [中心x, 中心y, 缩放, 设计宽, 设计高]
 const BG_LAYERS = [
-  { img: "p3",    depth: 0.10, tint: null,            items: [[2880, 1620, 1.11581, 5760, 3240]] },          // 主背景：一整片海水
-  { img: "mt1",   depth: 0.10, tint: [20, 107, 150],  items: [[738.56, 1280.87, 1.04279, 1890, 737]] },      // 远处模糊的礁石
-  { img: "mt1",   depth: 0.10, tint: [25, 120, 169],  items: [[5129.17, 1113.97, 1, 1890, 737]] },
-  { img: "part",  depth: 0.20, tint: null,            items: [[2557.49, 1439.18, 0.42093, 782, 820], [892.82, 1285.13, 0.42093, 782, 820], [1621.99, 1726.22, 0.42093, 782, 820]] }, // 枯枝珊瑚
-  { img: "ship",  depth: 0.20, tint: [36, 36, 36],    items: [[4176.64, 1196.34, 1.11581, 1280, 953]] },     // 沉船
-  { img: "mt2",   depth: 0.20, tint: [41, 166, 219],  items: [[6922.42, 912.05, 3.25838, 1890, 702], [-643.46, 899.22, 3.25838, 1890, 702], [3036.77, 954.85, 3.11361, 1890, 702]] }, // 近处的礁石山脉
-  { img: "part",  depth: 0.30, tint: null,            items: [[552.04, 533.05, 1.95547, 782, 820], [492.12, 524.49, 1.60803, 782, 820]] }, // 最贴近眼睛的剪影
-  { img: "smoke", depth: 0,    tint: [26, 28, 28],    items: [[2978.83, 1462.22, 3.34524, 1920, 1080]] },    // 罩在整个海底的暗雾
+  { img: "sky",   depth: 0,    items: [[960, 540, 1.03, 1920, 1080]] },                       // 主背景：一整片星空
+  { img: "glow2", depth: 0,    blend: "screen", alpha: 200, items: [[960, 540, 1.03, 1920, 1080]] }, // 梦幻光晕（screen 混合，黑底变透明只留光）
+  { img: "lut",   depth: 0,    items: [[960, 877.52, 1.03, 1920, 626]] },                     // 地平线向上的蓝色辉光
+  { img: "land",  depth: 0.07, items: [[960, 976.76, 1.03, 1920, 225]] },                     // 群山与草地剪影
+  { img: "f1",    depth: 0.10, items: [[974.52, 525.48, 1.03, 687, 762]] },                   // 漂浮的大画框
+  { img: "f9",    depth: 0.10, items: [[1325.08, 716.78, 1.03, 46, 52]] },
+  { img: "f13",   depth: 0.10, items: [[1458.06, 322.38, 1.03, 44, 45]] },
+  { img: "f7",    depth: 0.15, items: [[427.01, 736.33, 1.03, 50, 34]] },
+  { img: "f10",   depth: 0.20, items: [[1421.74, 807.04, 1.03, 72, 38]] },
+  // 原壁纸有十几个画框，其中几张是特殊压缩格式没解开，用已有画框补位让视差更丰富
+  { img: "f7",    depth: 0.22, items: [[180, 180, 1.8, 50, 34]] },
+  { img: "f10",   depth: 0.27, items: [[320, 640, 1.6, 72, 38]] },
+  { img: "f9",    depth: 0.30, items: [[1620, 760, 2.2, 46, 52]] },
+  { img: "leak",  depth: 0.45, blend: "screen", alpha: 150, items: [[947.63, 780.66, 1.5, 1246, 720]] }, // 近处漂浮的镜头光斑
+  { img: "leak",  depth: 0.75, blend: "screen", alpha: 110, items: [[882.58, 750.76, 1.6, 1246, 720]] }, // 最贴近眼睛的光斑，挥手时动得最多
 ];
 
 function preload() {
-  bgImg.p3 = loadImage("bg/p3.jpg");
-  bgImg.mt1 = loadImage("bg/mt1.png");
-  bgImg.mt2 = loadImage("bg/mt2.png");
-  bgImg.part = loadImage("bg/part.png");
-  bgImg.ship = loadImage("bg/ship.png");
-  bgImg.smoke = loadImage("bg/smoke.png");
+  bgImg.sky = loadImage("bg/sky.jpg");
+  bgImg.glow2 = loadImage("bg/glow2.jpg");
+  bgImg.lut = loadImage("bg/lut.png");
+  bgImg.land = loadImage("bg/land.png");
+  bgImg.f1 = loadImage("bg/f1.png");
+  bgImg.f7 = loadImage("bg/f7.png");
+  bgImg.f9 = loadImage("bg/f9.png");
+  bgImg.f10 = loadImage("bg/f10.png");
+  bgImg.f13 = loadImage("bg/f13.png");
+  bgImg.leak = loadImage("bg/leak.jpg");
 }
 
 function setup() {
@@ -266,7 +277,7 @@ function draw() {
     if (hands.length === 0) lastGesture = {};
   }
 
-  // 2. 深海背景：青黑底 + 多层视差（手挥动 / 鼠标移动 / 自动漂移都会带着背景分层移动）
+  // 2. 星空背景：蓝黑底 + 多层视差（手挥动 / 鼠标移动 / 自动漂移都会带着背景分层移动）
   background(SKY_DEEP);
   updateParallax();
   drawBackground();
@@ -631,7 +642,7 @@ function drawShootingStar() {
   }
 }
 
-// ---------- 深海视差背景：手 / 鼠标 / 自动漂移驱动，近处动得多、远处动得少 ----------
+// ---------- 星空视差背景：手 / 鼠标 / 自动漂移驱动，近处动得多、远处动得少 ----------
 let parX = 0, parY = 0;   // 平滑后的视差量（-1 ~ 1）
 let lastMouseMove = -999; // 上一次鼠标移动是哪一帧（没手的时候看鼠标，都没有就缓缓自动漂移）
 
@@ -642,7 +653,7 @@ function mouseMoved() {
 function updateParallax() {
   let tx, ty;
   if (started && hands.length > 0) {
-    // 手：用掌心位置当“眼睛”——手往右挥，近处的图层就往左让，像真的在海底转头
+    // 手：用掌心位置当“眼睛”——手往右挥，近处的图层就往左让，像真的在星空下转头
     const palm = hands[0].points[9];
     tx = (0.5 - palm.x / width) * 2;
     ty = (0.5 - palm.y / height) * 2;
@@ -670,13 +681,16 @@ function drawBackground() {
     const ox = parX * L.depth * str;
     const oy = parY * L.depth * str * 0.7;
     const bleed = 1.06 + L.depth * 0.15; // 每层多画一圈，移动时不会露出边缘
-    if (L.tint) tint(L.tint[0], L.tint[1], L.tint[2]); // 照搬原壁纸的颜色乘算
+    if (L.blend === "screen") blendMode(SCREEN); // 光晕层：screen 混合，黑底变透明只留光
+    if (L.tint) tint(L.tint[0], L.tint[1], L.tint[2], L.alpha === undefined ? 255 : L.alpha);
+    else if (L.alpha !== undefined) tint(255, L.alpha);
     else noTint();
     for (const it of L.items) {
       const x = (it[0] - BG_W / 2) * s + width / 2 + ox;
       const y = (it[1] - BG_H / 2) * s + height / 2 + oy;
       image(img, x, y, it[3] * it[2] * s * bleed, it[4] * it[2] * s * bleed);
     }
+    if (L.blend === "screen") blendMode(BLEND); // 画完光晕层恢复正常混合
   }
   pop();
 }
