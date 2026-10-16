@@ -155,6 +155,12 @@ let showInfo = true;
 
 // 声音：星星的叮声
 let chime, chimeEnv;
+// 法阵展开时的音效（🖐 张开手掌时播放）
+let magicSound;
+
+function preload() {
+  magicSound = loadSound("freesound_community-soul-steal-01-98129.mp3");
+}
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -430,7 +436,42 @@ function drawConstellation(c) {
 
 // ★★★★★★ 第 5 步 开始：把这里的 onGesture 函数整个换成 Agent 写的版本 ★★★★★★
 function onGesture(g, hand) {
-  // 临时版本：做手势还没有反应
+  // 一个手势刚刚开始时会调用这个函数，根据手势做不同的事
+  // 1. 食指指尖和手掌中心
+  let tip = hand.points[8];
+  let palm = hand.points[9];
+  // 2. ☝️ 食指向上：在指尖点亮一颗引导星（星星越多，叮声越高）
+  if (g === "Pointing_Up" && stars.length < MAX_STARS) {
+    spawnGuideStar(tip.x, tip.y);
+    playStarNote(stars.length);
+  }
+  // 3. 🖐 张开手掌：召唤三层法阵，由内向外展开，同时播放法阵音效
+  if (g === "Open_Palm" && magicCircle.open === false) {
+    magicCircle.open = true;
+    playStarNote(3);
+    if (magicSound && magicSound.isLoaded()) {
+      magicSound.play();
+    }
+  }
+  // 4. 👍 拇指向上：漫天星星拖着光尾向星座汇聚，连线渐显
+  if (g === "Thumb_Up") {
+    summonConstellation();
+    playStarNote(stars.length);
+  }
+  // 5. ✊ 握拳：一切向中心收拢归寂
+  if (g === "Closed_Fist") {
+    dismissAll();
+    playStarNote(0);
+  }
+  // 6. 🤟 我爱你：星座消散，切换到下一个星座
+  if (g === "ILoveYou") {
+    nextConstellation();
+    playStarNote(5);
+  }
+  // 7. ✌️ 剪刀手：换一片新星空
+  if (g === "Victory") {
+    resetSky();
+  }
 }
 // ★★★★★★ 第 5 步 结束 ★★★★★★
 
