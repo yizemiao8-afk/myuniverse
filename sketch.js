@@ -341,11 +341,60 @@ function updateStar(s) {
 
 // ★★★★★★ 第 3 步 开始：把这里的 drawMagicCircle 函数整个换成 Agent 写的版本 ★★★★★★
 function drawMagicCircle(mc) {
-  // 临时版本：画面中央一个孤单的灰色圆环
+  // 在画面中心画三层同心魔法阵：金色外环 + 蓝色中环 + 紫色内环，异速反向缓旋
+  // 1. 法阵没有展开时什么都不画
+  if (mc.open === false) {
+    return;
+  }
+  // 2. 呼吸：整圈半径在 ±1% 之间轻轻缩放
+  let breath = 1 + 0.01 * sin(frameCount * 0.05);
+  let R = mc.R * breath;
+  // 3. 只画半透明的线条，不填充
   noFill();
-  stroke(140);
   strokeWeight(1);
-  circle(mc.x, mc.y, mc.R * 2);
+
+  // 4. 外环（金色）：双圆环 + 72 根刻度，跟着 mc.rot 慢慢转
+  stroke(246, 200, 107, 110);
+  circle(mc.x, mc.y, 2 * R);
+  circle(mc.x, mc.y, 1.88 * R);
+  for (let i = 0; i < 72; i++) {
+    let a = mc.rot + i * TWO_PI / 72;
+    line(mc.x + cos(a) * R, mc.y + sin(a) * R, mc.x + cos(a) * R * 0.94, mc.y + sin(a) * R * 0.94);
+  }
+
+  // 5. 中环（蓝色，反转 1.5 倍速）：24 段隔一画一的虚线圆弧 + 8 个菱形节点
+  stroke(111, 195, 255, 100);
+  let R2 = R * 0.68;
+  for (let i = 0; i < 24; i += 2) {
+    let a = mc.rot * -1.5 + i * TWO_PI / 24;
+    arc(mc.x, mc.y, R2 * 2, R2 * 2, a, a + TWO_PI / 24);
+  }
+  for (let i = 0; i < 8; i++) {
+    let a = mc.rot * -1.5 + i * TWO_PI / 8;
+    let px = mc.x + cos(a) * R2;
+    let py = mc.y + sin(a) * R2;
+    // 边长 6、旋转 45 度的小菱形：半个对角线约 4.24，用 4 条线连出 4 条边
+    let d = 4.24;
+    line(px, py - d, px + d, py);
+    line(px + d, py, px, py + d);
+    line(px, py + d, px - d, py);
+    line(px - d, py, px, py - d);
+  }
+
+  // 6. 内环（紫色，正转 2.2 倍速）：12 个等分点“隔 5 个连 1 个”连成十二角星芒 + 中心小圆
+  stroke(167, 139, 250, 110);
+  let R3 = R * 0.42;
+  let pts = [];
+  for (let i = 0; i < 12; i++) {
+    let a = mc.rot * 2.2 + i * TWO_PI / 12;
+    pts.push({ x: mc.x + cos(a) * R3, y: mc.y + sin(a) * R3 });
+  }
+  for (let i = 0; i < 12; i++) {
+    let p1 = pts[i];
+    let p2 = pts[(i + 5) % 12];
+    line(p1.x, p1.y, p2.x, p2.y);
+  }
+  circle(mc.x, mc.y, R * 0.16);
 }
 // ★★★★★★ 第 3 步 结束 ★★★★★★
 
