@@ -400,7 +400,31 @@ function drawMagicCircle(mc) {
 
 // ★★★★★★ 第 4 步 开始：把这里的 drawConstellation 函数整个换成 Agent 写的版本 ★★★★★★
 function drawConstellation(c) {
-  // 临时版本：星座只是一串看不见的数据，什么都不画
+  // 画一个正在显形的星座：连线一段一段渐显，整个星座像魂魄一样轻轻地整体闪烁
+  // 1. 几乎完全透明时什么都不画
+  if (c.alpha <= 0.01) {
+    return;
+  }
+  // 2. 魂魄般的闪烁：透明度乘上一个缓慢的节奏摆动
+  let flicker = 0.75 + 0.25 * sin(frameCount * 0.08 + c.phase);
+  // 3. 最终透明度 = 显形程度 × 闪烁
+  let a = c.alpha * flicker;
+  // 4. 画连线：发光的星座连线框，从 c.nodes[l[0]] 画到 c.nodes[l[1]]
+  stroke(200, 225, 255, 220 * a);
+  strokeWeight(1.2);
+  for (const l of c.links) {
+    let n1 = c.nodes[l[0]];
+    let n2 = c.nodes[l[1]];
+    line(n1.x, n1.y, n2.x, n2.y);
+  }
+  // 5. 画恒星光点：每个节点先画一层淡淡的蓝色光晕，再画一个亮星核
+  noStroke();
+  for (const n of c.nodes) {
+    fill(190, 215, 255, 60 * a);
+    circle(n.x, n.y, 14);
+    fill(255, 250, 230, 255 * a);
+    circle(n.x, n.y, 4);
+  }
 }
 // ★★★★★★ 第 4 步 结束 ★★★★★★
 
