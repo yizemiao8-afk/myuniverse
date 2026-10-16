@@ -140,10 +140,8 @@ function setStatus(msg) {
 //  PART B — 作品：《梦幻星空 · 星座法阵》
 // ---------------------------------------------------------------------
 
-const SKY_DEEP = "#0a0e2a";  // 深邃的蓝黑夜空
+const SKY_DEEP = "#1c2c5e";  // 深邃的蓝黑夜空（参考《宇宙星云》壁纸的主题色）
 const MAX_STARS = 300;       // 星空中星星数量的上限
-// C 大调五声音阶（MIDI 编号，两个八度），星星越多，音越高
-const STAR_NOTES = [72, 74, 76, 79, 81, 84, 86, 88, 91, 93, 96, 98];
 
 let stars = [];        // 星星：{x, y, px, py, homeX, homeY, r, phase, seed, tx, ty, hasTarget}
 let magicCircle;       // 法阵：{x, y, R, rot, open}
@@ -153,37 +151,39 @@ let summoned = false;  // 星座是否被召唤（连线是否渐显）
 let lastGesture = {};
 let showInfo = true;
 
-// 声音：星星的叮声
-let chime, chimeEnv;
-// 法阵展开时的音效（🖐 张开手掌时播放）
-let magicSound;
-// 点亮引导星时的音效（☝️ 食指向上时播放）
-let guideSound;
-
-function preload() {
-  magicSound = loadSound("freesound_community-soul-steal-01-98129.mp3");
-  guideSound = loadSound("benkirb-shine-1-268902.mp3");
-}
-
 function setup() {
   createCanvas(windowWidth, windowHeight);
   magicCircle = { x: width / 2, y: height / 2, R: min(width, height) * 0.32, rot: 0, open: false };
+  paintNebula();
   initStars();
+  initBokehs();
   layoutConstellations();
   select("#start").mouseClicked(startExperience);
 }
 
-// 铺一片新星空：星星随机散布，各自有大小、闪烁起点和“家”
+// 铺一片新星空：星星随机散布，各自有大小、颜色、闪烁节奏和“家”
 function initStars() {
   stars = [];
-  const n = 240;
+  const n = 270;
   for (let i = 0; i < n; i++) stars.push(newStar(random(width), random(height), random(1.5, 4.5)));
 }
+
+// 星星的颜色盘：大部分是钻石般的冷白蓝，偶尔有青碧、紫、暖白的宝石
+const STAR_TINTS = [
+  [210, 225, 255], [210, 225, 255], [210, 225, 255], // 冷白蓝（常见）
+  [190, 215, 255], [190, 215, 255],
+  [150, 215, 255], // 天青
+  [140, 235, 225], // 青碧
+  [180, 170, 255], // 紫
+  [255, 240, 215], // 暖白（少见）
+];
 
 function newStar(x, y, r) {
   return {
     x, y, px: x, py: y, homeX: x, homeY: y,
     r, phase: random(TWO_PI), seed: random(1000),
+    speed: random(0.5, 1.3),   // 每颗星星自己的闪烁快慢
+    tint: random(STAR_TINTS),  // 每颗星星自己的宝石颜色
     tx: 0, ty: 0, hasTarget: false,
   };
 }
@@ -219,18 +219,9 @@ function layoutConstellations() {
 }
 
 function startExperience() {
-  userStartAudio();
-
   video = createCapture(VIDEO);
   video.size(640, 480);
   video.hide();
-
-  chime = new p5.Oscillator("sine");
-  chime.amp(0);
-  chime.start();
-  chimeEnv = new p5.Envelope();
-  chimeEnv.setADSR(0.003, 1.2, 0, 0.2);
-  chimeEnv.setRange(0.3, 0);
 
   select("#intro").hide();
   started = true;
@@ -250,8 +241,9 @@ function draw() {
     if (hands.length === 0) lastGesture = {};
   }
 
-  // 2. 夜空
+  // 2. 夜空：深蓝底 + 预渲染的星云带
   background(SKY_DEEP);
+  image(nebula, 0, 0);
   if (started && showCamera) drawCamera();
 
   // 3. 星星
@@ -259,6 +251,9 @@ function draw() {
     updateStar(s);
     drawStar(s);
   }
+
+  // 失焦光斑：几颗大大的柔光点，像镜头没对上焦的亮星
+  drawBokehs();
 
   // 流星：偶尔从天空划过
   drawShootingStar();
@@ -296,16 +291,16 @@ function draw() {
 
 // ★★★★★★ 第 1 步 开始：把这里的 drawStar 函数整个换成 Agent 写的版本 ★★★★★★
 function drawStar(s) {
-  // 画一颗会闪烁的梦幻星星：几层蓝白色光晕 + 一个亮白色的核 + 一道淡淡的十字光芒
-  // 1. pulse 在 0.4 和 1 之间来回摆动，s.phase 让每颗星星的闪烁节奏各不相同
-  let pulse = 0.7 + 0.3 * sin(frameCount * 0.06 + s.phase);
+  // 画一颗钻石般闪烁的星星：染上自己颜色的光晕 + 亮核 + 十字光芒
+  // 1. pulse 在 0.4 和 1 之间来回摆动；每颗星星有自己的节奏（s.speed）和起点（s.phase）
+  let pulse = 0.7 + 0.3 * sin(frameCount * 0.06 * s.speed + s.phase);
   // 2. 大小跟着呼吸一起变化
   let r = s.r * pulse;
   // 3. 光晕不需要描边
   noStroke();
-  // 4. 蓝白色光晕：4 个越来越大、越来越透明的圆，叠在一起就像在发光
+  // 4. 光晕染上这颗星星自己的宝石颜色，4 层越来越大、越来越淡
   for (let i = 4; i >= 1; i--) {
-    fill(190, 215, 255, 18);
+    fill(s.tint[0], s.tint[1], s.tint[2], 18);
     circle(s.x, s.y, r * i * 1.8);
   }
   // 5. 亮白色的核
@@ -482,36 +477,25 @@ function onGesture(g, hand) {
   // 1. 食指指尖和手掌中心
   let tip = hand.points[8];
   let palm = hand.points[9];
-  // 2. ☝️ 食指向上：在指尖点亮一颗引导星，同时播放点星音效（星星越多，叮声越高）
+  // 2. ☝️ 食指向上：在指尖点亮一颗引导星
   if (g === "Pointing_Up" && stars.length < MAX_STARS) {
     spawnGuideStar(tip.x, tip.y);
-    playStarNote(stars.length);
-    if (guideSound && guideSound.isLoaded()) {
-      guideSound.play();
-    }
   }
-  // 3. 🖐 张开手掌：召唤三层法阵，由内向外展开，同时播放法阵音效
+  // 3. 🖐 张开手掌：召唤三层法阵，由内向外展开
   if (g === "Open_Palm" && magicCircle.open === false) {
     magicCircle.open = true;
-    playStarNote(3);
-    if (magicSound && magicSound.isLoaded()) {
-      magicSound.play();
-    }
   }
   // 4. 👍 拇指向上：漫天星星拖着光尾向星座汇聚，连线渐显
   if (g === "Thumb_Up") {
     summonConstellation();
-    playStarNote(stars.length);
   }
   // 5. ✊ 握拳：一切向中心收拢归寂
   if (g === "Closed_Fist") {
     dismissAll();
-    playStarNote(0);
   }
   // 6. 🤟 我爱你：星座消散，切换到下一个星座
   if (g === "ILoveYou") {
     nextConstellation();
-    playStarNote(5);
   }
   // 7. ✌️ 剪刀手：换一片新星空
   if (g === "Victory") {
@@ -522,9 +506,11 @@ function onGesture(g, hand) {
 
 // ---------- 下面这些已经写好了，不需要改 ----------
 
-// ☝️ 在指尖点亮一颗引导星
+// ☝️ 在指尖点亮一颗引导星（金色的，一眼就能认出来）
 function spawnGuideStar(x, y) {
-  stars.push(newStar(x, y, random(4, 6)));
+  const g = newStar(x, y, random(4, 6));
+  g.tint = [255, 215, 130];
+  stars.push(g);
 }
 
 // 👍 召唤：让一部分星星飞向当前星座的恒星位置
@@ -612,6 +598,71 @@ function drawShootingStar() {
   }
 }
 
+// ---------- 星云背景（参考壁纸《宇宙星云》：深蓝夜空 + 一条斜穿的蓝紫色星河） ----------
+let nebula; // 预渲染的星云，只画一次，每帧直接贴图，不耗性能
+
+function paintNebula() {
+  nebula = createGraphics(width, height);
+  nebula.background(28, 44, 94); // 参考壁纸的主题深蓝
+  nebula.noStroke();
+  // 星河带：一条微微倾斜、穿过画面中央的云雾带（高斯散布，中间密两边稀）
+  const tilt = 0.12;
+  for (let i = 0; i < 140; i++) {
+    const x = random(-50, width + 50);
+    const bandY = height * 0.55 + (x - width / 2) * tilt;
+    const y = bandY + randomGaussian() * height * 0.14;
+    const d = random(width * 0.03, width * 0.16);
+    const roll = random();
+    let c;
+    if (roll < 0.18) c = [215, 228, 255];     // 云雾里的亮白核
+    else if (roll < 0.5) c = [95, 125, 215];  // 蓝
+    else if (roll < 0.8) c = [115, 105, 215]; // 蓝紫
+    else c = [45, 65, 140];                   // 深蓝
+    // 由外到内叠几层，做出柔边云雾
+    for (let k = 4; k >= 1; k--) {
+      nebula.fill(c[0], c[1], c[2], 3.2 + (4 - k) * 1.6);
+      nebula.circle(x, y, (d * k) / 4);
+    }
+  }
+  // 带外再撒一点稀疏的暗云，过渡更自然
+  for (let i = 0; i < 40; i++) {
+    nebula.fill(40, 60, 130, 3);
+    nebula.circle(random(width), random(height), random(width * 0.05, width * 0.2));
+  }
+}
+
+// ---------- 失焦光斑（参考壁纸里那些大颗的柔光点） ----------
+let bokehs = [];
+
+function initBokehs() {
+  bokehs = [];
+  const tints = [[120, 170, 255], [90, 220, 220], [160, 150, 255], [200, 225, 255]];
+  for (let i = 0; i < 9; i++) {
+    bokehs.push({
+      x: random(width), y: random(height * 0.9),
+      r: random(10, 26),
+      phase: random(TWO_PI), seed: random(1000),
+      tint: random(tints),
+    });
+  }
+}
+
+function drawBokehs() {
+  noStroke();
+  for (const b of bokehs) {
+    // 几不可察地漂移 + 轻轻地一明一暗
+    b.x += (noise(b.seed, frameCount * 0.0006) - 0.5) * 1.2;
+    b.y += (noise(b.seed + 50, frameCount * 0.0006) - 0.5) * 1.2;
+    let glow = 0.55 + 0.45 * sin(frameCount * 0.02 + b.phase);
+    fill(b.tint[0], b.tint[1], b.tint[2], 14 * glow);
+    circle(b.x, b.y, b.r * 2.6);
+    fill(b.tint[0], b.tint[1], b.tint[2], 30 * glow);
+    circle(b.x, b.y, b.r * 1.5);
+    fill(255, 255, 255, 60 * glow);
+    circle(b.x, b.y, b.r * 0.55);
+  }
+}
+
 // ---------- 手掌拧动驱动法阵 ----------
 let prevHandAngle = null; // 上一帧手掌的朝向角度
 
@@ -637,14 +688,6 @@ function handTwistDelta() {
   return constrain(delta, -0.18, 0.18);
 }
 
-// 叮——星星越多，音越高
-function playStarNote(n) {
-  if (!chime) return;
-  const i = constrain(floor(map(n, 0, MAX_STARS, 0, STAR_NOTES.length - 1)), 0, STAR_NOTES.length - 1);
-  chime.freq(midiToFreq(STAR_NOTES[i]));
-  chimeEnv.play(chime);
-}
-
 function keyPressed() {
   if (key === "s" || key === "S") saveCanvas("my-zodiac-circle", "png");
   if (key === "v" || key === "V") showCamera = !showCamera;
@@ -656,6 +699,8 @@ function windowResized() {
   magicCircle.x = width / 2;
   magicCircle.y = height / 2;
   magicCircle.R = min(width, height) * 0.32;
+  paintNebula();
   initStars();
+  initBokehs();
   layoutConstellations();
 }
