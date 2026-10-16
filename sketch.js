@@ -310,7 +310,32 @@ function drawStar(s) {
 
 // ★★★★★★ 第 2 步 开始：把这里的 updateStar 函数整个换成 Agent 写的版本 ★★★★★★
 function updateStar(s) {
-  // 临时版本：星星钉在原地不动
+  // 每帧更新一颗星星的位置：平时在家附近缓缓漂移，被召唤时沿弧线飞向目标点并留下光尾
+  if (s.hasTarget === false) {
+    // 1. 平时：用 noise 在家 (homeX, homeY) 附近缓缓漂移
+    //    （相邻帧的 noise 值很接近，所以运动丝滑不抖动）
+    s.x = s.homeX + (noise(s.seed, frameCount * 0.001) - 0.5) * 40;
+    s.y = s.homeY + (noise(s.seed + 100, frameCount * 0.001) - 0.5) * 40;
+    // 没有移动，上一帧的位置就是现在的位置
+    s.px = s.x;
+    s.py = s.y;
+  } else {
+    // 2. 被召唤：缓动（每帧走剩下路程的 7%，开始快、靠近时慢，优雅地滑进目标点）
+    //    再加一点点垂直于飞行方向的偏移 (-dy, dx)，星星就划出一道弧线，像被引力甩过去
+    let dx = s.tx - s.x;
+    let dy = s.ty - s.y;
+    s.x += dx * 0.07 + (-dy) * 0.012;
+    s.y += dy * 0.07 + dx * 0.012;
+  }
+  // 3. 光尾：把上一帧的位置和现在的位置连成一条淡蓝色的线，像拖着渐隐的彗尾
+  //    （漂移时光尾长度为 0，所以看不见）
+  stroke(170, 210, 255, 80);
+  strokeWeight(1.5);
+  line(s.px, s.py, s.x, s.y);
+  noStroke();
+  // 4. 记住现在的位置，给下一帧用
+  s.px = s.x;
+  s.py = s.y;
 }
 // ★★★★★★ 第 2 步 结束 ★★★★★★
 
