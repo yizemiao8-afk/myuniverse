@@ -386,95 +386,236 @@ function updateStar(s) {
 
 // ★★★★★★ 第 3 步 开始：把这里的 drawMagicCircle 函数整个换成 Agent 写的版本 ★★★★★★
 function drawMagicCircle(mc) {
-  // 在画面中心画三层同心魔法阵，每层都带发光效果（先画粗而淡的光晕底，再画细而亮的主线）
-  // 旋转由手掌拧动驱动：外环跟着手掌顺时针，中环同速反向（逆时针），内环同向但慢一半
+  // 参考《法术设计·阵法》的高亮金色法阵：每条线都画好几层，外层粗而淡、内层细而亮，
+  // 再用加法混合（ADD）把重叠的金光烧成白亮——这就是“高亮魔法感”的关键
+  // 旋转仍由手掌拧动驱动：外环顺时针，中环同速反向，内环同向但慢一半
   // 1. 法阵没有展开时什么都不画
   if (mc.open === false) {
+    mc.openT = 0;
     return;
   }
-  // 2. 呼吸：整圈半径在 ±1% 之间轻轻缩放
-  let breath = 1 + 0.01 * sin(frameCount * 0.05);
-  let R = mc.R * breath;
-  // 3. 只画线条，不填充
+  // 2. 展开动画：每次召唤都刷新一炉光尘，法阵带一点回弹地放大浮现
+  if (mc.openT === 0 || mc.openT === undefined) initMagicMotes();
+  mc.openT = min(1, mc.openT + 0.045);
+  const appear = mc.openT;
+  const ease = 1 + 2.7 * pow(appear - 1, 3) + 1.7 * pow(appear - 1, 2); // easeOutBack 回弹
+  // 3. 呼吸：半径轻轻起伏，辉光也跟着一明一暗
+  const breath = 1 + 0.01 * sin(frameCount * 0.05);
+  const pulse = (0.72 + 0.28 * sin(frameCount * 0.04)) * appear;
+  const R = mc.R * breath * ease;
+  const cx = mc.x, cy = mc.y;
+  const smallScreen = min(width, height) < 600; // 小屏减量，手机更流畅
+
   noFill();
+  blendMode(ADD); // 加法混合：金光叠金光会越来越亮，直到白热
 
-  // 4. 外环（金色，跟着手掌顺时针）：双圆环 + 72 根刻度
-  stroke(246, 200, 107, 26);
-  strokeWeight(7);
-  circle(mc.x, mc.y, 2 * R);
-  circle(mc.x, mc.y, 1.88 * R);
-  stroke(246, 200, 107, 110);
-  strokeWeight(1);
-  circle(mc.x, mc.y, 2 * R);
-  circle(mc.x, mc.y, 1.88 * R);
-  for (let i = 0; i < 72; i++) {
-    let a = mc.rot + i * TWO_PI / 72;
-    let x1 = mc.x + cos(a) * R;
-    let y1 = mc.y + sin(a) * R;
-    let x2 = mc.x + cos(a) * R * 0.94;
-    let y2 = mc.y + sin(a) * R * 0.94;
-    stroke(246, 200, 107, 26);
-    strokeWeight(7);
-    line(x1, y1, x2, y2); // 发光底
-    stroke(246, 200, 107, 110);
-    strokeWeight(1);
-    line(x1, y1, x2, y2); // 主线
+  // 4. 底座光晕：法阵底下一团柔和的径向金光，把法阵“托”起来
+  for (let k = 4; k >= 1; k--) {
+    stroke(255, 196, 90, 6 * pulse);
+    strokeWeight(R * 0.10 * k);
+    circle(cx, cy, 2 * R);
   }
 
-  // 5. 中环（蓝色，和外环同速、反向）：24 段虚线圆弧 + 8 个菱形节点
-  let R2 = R * 0.68;
-  for (let i = 0; i < 24; i += 2) {
-    let a = mc.rot * -1 + i * TWO_PI / 24;
-    stroke(111, 195, 255, 24);
-    strokeWeight(6);
-    arc(mc.x, mc.y, R2 * 2, R2 * 2, a, a + TWO_PI / 24); // 发光底
-    stroke(111, 195, 255, 100);
-    strokeWeight(1);
-    arc(mc.x, mc.y, R2 * 2, R2 * 2, a, a + TWO_PI / 24); // 主线
+  // 5. 外环（深金，跟着手掌顺时针）：双圆环 + 符文带 + 八支光矛 + 八颗菱形宝石
+  const rotO = mc.rot;
+  magicRing(cx, cy, 2 * R, 255, 200, 95, 2.2, 130 * pulse);
+  magicRing(cx, cy, 1.88 * R, 255, 200, 95, 1.6, 110 * pulse);
+  // 符文带：两环之间一圈伪符文（短竖、小尖角、竖加点、交叉），按位置确定地变化
+  const runeCount = smallScreen ? 24 : 48;
+  for (let i = 0; i < runeCount; i++) {
+    const a = rotO + (i * TWO_PI) / runeCount;
+    const px = cx + cos(a) * R * 0.94;
+    const py = cy + sin(a) * R * 0.94;
+    const s = R * 0.018;
+    push();
+    translate(px, py);
+    rotate(a + HALF_PI);
+    const pat = (i * 5 + 3) % 4;
+    if (pat === 0) {
+      magicLine(0, -s, 0, s, 255, 205, 100, 1, 120 * pulse);
+    } else if (pat === 1) {
+      magicLine(-s * 0.6, s * 0.6, 0, -s, 255, 205, 100, 1, 120 * pulse);
+      magicLine(s * 0.6, s * 0.6, 0, -s, 255, 205, 100, 1, 120 * pulse);
+    } else if (pat === 2) {
+      magicLine(0, -s, 0, s * 0.4, 255, 205, 100, 1, 120 * pulse);
+      stroke(255, 220, 140, 150 * pulse);
+      strokeWeight(2.5);
+      point(0, s * 0.9);
+    } else {
+      magicLine(-s * 0.5, -s, s * 0.5, s, 255, 205, 100, 1, 120 * pulse);
+      magicLine(s * 0.5, -s, -s * 0.5, s, 255, 205, 100, 1, 120 * pulse);
+    }
+    pop();
   }
+  // 八支光矛：法阵最外圈的尖刺剪影（参考图里最醒目的轮廓）
   for (let i = 0; i < 8; i++) {
-    let a = mc.rot * -1 + i * TWO_PI / 8;
-    let px = mc.x + cos(a) * R2;
-    let py = mc.y + sin(a) * R2;
-    // 边长 6、旋转 45 度的小菱形：半个对角线约 4.24
-    let d = 4.24;
-    stroke(111, 195, 255, 24);
-    strokeWeight(5);
-    line(px, py - d, px + d, py);
-    line(px + d, py, px, py + d);
-    line(px, py + d, px - d, py);
-    line(px - d, py, px, py - d);
-    stroke(111, 195, 255, 100);
-    strokeWeight(1);
-    line(px, py - d, px + d, py);
-    line(px + d, py, px, py + d);
-    line(px, py + d, px - d, py);
-    line(px - d, py, px, py - d);
+    const a = rotO + (i * TWO_PI) / 8;
+    const dA = 0.022; // 矛底半宽（弧度）
+    const tX = cx + cos(a) * R * 1.17, tY = cy + sin(a) * R * 1.17; // 矛尖
+    magicLine(cx + cos(a - dA) * R, cy + sin(a - dA) * R, tX, tY, 255, 214, 120, 1.4, 130 * pulse);
+    magicLine(cx + cos(a + dA) * R, cy + sin(a + dA) * R, tX, tY, 255, 214, 120, 1.4, 130 * pulse);
+    magicLine(cx + cos(a) * R * 0.99, cy + sin(a) * R * 0.99, tX, tY, 255, 230, 160, 0.8, 110 * pulse); // 矛脊
+  }
+  // 八颗菱形宝石：挂在光矛之间，沿径向摆放，中心一点白亮
+  for (let i = 0; i < 8; i++) {
+    const a = rotO + ((i + 0.5) * TWO_PI) / 8;
+    push();
+    translate(cx + cos(a) * R * 1.02, cy + sin(a) * R * 1.02);
+    rotate(a + HALF_PI);
+    const dR = R * 0.045, dT = R * 0.026;
+    magicLine(0, -dR, dT, 0, 255, 224, 150, 1.2, 140 * pulse);
+    magicLine(dT, 0, 0, dR, 255, 224, 150, 1.2, 140 * pulse);
+    magicLine(0, dR, -dT, 0, 255, 224, 150, 1.2, 140 * pulse);
+    magicLine(-dT, 0, 0, -dR, 255, 224, 150, 1.2, 140 * pulse);
+    noStroke();
+    fill(255, 246, 220, 200 * pulse);
+    circle(0, 0, 3.2);
+    noFill();
+    pop();
   }
 
-  // 6. 内环（紫色，和外环同向、速度慢一半）：十二角星芒 + 中心小圆
-  let R3 = R * 0.42;
-  let pts = [];
-  for (let i = 0; i < 12; i++) {
-    let a = mc.rot * 0.5 + i * TWO_PI / 12;
-    pts.push({ x: mc.x + cos(a) * R3, y: mc.y + sin(a) * R3 });
+  // 6. 中环（亮金，和外环同速、反向）：24 段虚线圆弧 + 12 颗光珠
+  const rotM = mc.rot * -1;
+  const R2 = R * 0.68;
+  for (let i = 0; i < 24; i += 2) {
+    const a = rotM + (i * TWO_PI) / 24;
+    magicArc(cx, cy, R2 * 2, a, a + TWO_PI / 24, 255, 218, 130, 1.8, 120 * pulse);
   }
-  for (let i = 0; i < 12; i++) {
-    let p1 = pts[i];
-    let p2 = pts[(i + 5) % 12];
-    stroke(167, 139, 250, 26);
-    strokeWeight(6);
-    line(p1.x, p1.y, p2.x, p2.y); // 发光底
-    stroke(167, 139, 250, 110);
-    strokeWeight(1);
-    line(p1.x, p1.y, p2.x, p2.y); // 主线
+  for (let i = 1; i < 24; i += 2) {
+    const a = rotM + (i * TWO_PI) / 24;
+    const px = cx + cos(a) * R2;
+    const py = cy + sin(a) * R2;
+    noStroke();
+    fill(255, 218, 130, 40 * pulse);
+    circle(px, py, 12);
+    fill(255, 246, 220, 220 * pulse);
+    circle(px, py, 3.5);
+    noFill();
   }
-  stroke(167, 139, 250, 26);
-  strokeWeight(6);
-  circle(mc.x, mc.y, R * 0.16); // 中心小圆的发光底
-  stroke(167, 139, 250, 110);
-  strokeWeight(1);
-  circle(mc.x, mc.y, R * 0.16);
+
+  // 7. 内环（淡金白，和外环同向、速度慢一半）：十二瓣曼陀罗 + 六角星 + 中心圆
+  const rotI = mc.rot * 0.5;
+  const R3 = R * 0.42;
+  for (let i = 0; i < 12; i++) {
+    push();
+    translate(cx, cy);
+    rotate(rotI + (i * TWO_PI) / 12);
+    magicEllipse(R3 * 0.52, 0, R3 * 0.58, R3 * 0.24, 255, 236, 180, 1.2, 110 * pulse);
+    pop();
+  }
+  magicRing(cx, cy, R * 0.16, 255, 236, 180, 1.4, 120 * pulse);
+  // 六角星：两个三角形交错叠成
+  for (let k = 0; k < 2; k++) {
+    for (let j = 0; j < 3; j++) {
+      const a1 = rotI + k * (PI / 3) + (j * TWO_PI) / 3;
+      const a2 = rotI + k * (PI / 3) + ((j + 1) * TWO_PI) / 3;
+      magicLine(cx + cos(a1) * R * 0.075, cy + sin(a1) * R * 0.075,
+                cx + cos(a2) * R * 0.075, cy + sin(a2) * R * 0.075,
+                255, 240, 200, 1, 120 * pulse);
+    }
+  }
+  // 中心光核：一小团白热的光
+  noStroke();
+  for (let k = 4; k >= 1; k--) {
+    fill(255, 232, 170, 10 * pulse);
+    circle(cx, cy, R * 0.06 * k);
+  }
+  fill(255, 250, 230, 180 * pulse);
+  circle(cx, cy, R * 0.02);
+
+  // 8. 光尘：金色光点在法阵里慢慢环绕、忽明忽暗（参考图里飞舞的光点）
+  for (const m of magicMotes) {
+    const a = m.a0 + frameCount * m.spd;
+    const px = cx + cos(a) * R * m.rr;
+    const py = cy + sin(a) * R * m.rr;
+    const tw = 0.4 + 0.6 * (0.5 + 0.5 * sin(frameCount * 0.07 + m.tw));
+    fill(255, 214, 120, 36 * tw * appear);
+    circle(px, py, m.sz * 3.2);
+    fill(255, 246, 220, 200 * tw * appear);
+    circle(px, py, m.sz);
+  }
+
+  blendMode(BLEND); // 恢复正常混合，别影响后面的星星和星座
+}
+
+// 多层发光直线：外晕 → 中晕 → 主色 → 白热芯
+function magicLine(x1, y1, x2, y2, r, g, b, w, a) {
+  stroke(r, g, b, a * 0.10);
+  strokeWeight(w * 5);
+  line(x1, y1, x2, y2);
+  stroke(r, g, b, a * 0.30);
+  strokeWeight(w * 2.2);
+  line(x1, y1, x2, y2);
+  stroke(r, g, b, a);
+  strokeWeight(w);
+  line(x1, y1, x2, y2);
+  stroke(255, 246, 220, a * 0.85);
+  strokeWeight(max(w * 0.4, 0.6));
+  line(x1, y1, x2, y2);
+}
+
+// 多层发光圆环
+function magicRing(x, y, d, r, g, b, w, a) {
+  stroke(r, g, b, a * 0.10);
+  strokeWeight(w * 5);
+  circle(x, y, d);
+  stroke(r, g, b, a * 0.30);
+  strokeWeight(w * 2.2);
+  circle(x, y, d);
+  stroke(r, g, b, a);
+  strokeWeight(w);
+  circle(x, y, d);
+  stroke(255, 246, 220, a * 0.85);
+  strokeWeight(max(w * 0.4, 0.6));
+  circle(x, y, d);
+}
+
+// 多层发光圆弧
+function magicArc(x, y, d, a0, a1, r, g, b, w, a) {
+  stroke(r, g, b, a * 0.10);
+  strokeWeight(w * 5);
+  arc(x, y, d, d, a0, a1);
+  stroke(r, g, b, a * 0.30);
+  strokeWeight(w * 2.2);
+  arc(x, y, d, d, a0, a1);
+  stroke(r, g, b, a);
+  strokeWeight(w);
+  arc(x, y, d, d, a0, a1);
+  stroke(255, 246, 220, a * 0.85);
+  strokeWeight(max(w * 0.4, 0.6));
+  arc(x, y, d, d, a0, a1);
+}
+
+// 多层发光椭圆（曼陀罗花瓣）
+function magicEllipse(x, y, w, h, r, g, b, wt, a) {
+  stroke(r, g, b, a * 0.10);
+  strokeWeight(wt * 5);
+  ellipse(x, y, w, h);
+  stroke(r, g, b, a * 0.30);
+  strokeWeight(wt * 2.2);
+  ellipse(x, y, w, h);
+  stroke(r, g, b, a);
+  strokeWeight(wt);
+  ellipse(x, y, w, h);
+  stroke(255, 246, 220, a * 0.8);
+  strokeWeight(max(wt * 0.4, 0.6));
+  ellipse(x, y, w, h);
+}
+
+// 法阵里环绕的金色光尘
+let magicMotes = [];
+function initMagicMotes() {
+  magicMotes = [];
+  const n = min(width, height) < 600 ? 12 : 26; // 小屏少一点
+  for (let i = 0; i < n; i++) {
+    magicMotes.push({
+      rr: random(0.15, 1.08),  // 离中心的距离比例
+      a0: random(TWO_PI),      // 起始角度
+      spd: random(0.001, 0.004) * (random() < 0.5 ? -1 : 1), // 环绕快慢和方向
+      tw: random(TWO_PI),      // 闪烁节奏
+      sz: random(2, 4.5),
+    });
+  }
 }
 // ★★★★★★ 第 3 步 结束 ★★★★★★
 
