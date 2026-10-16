@@ -263,8 +263,9 @@ function draw() {
   // 流星：偶尔从天空划过
   drawShootingStar();
 
-  // 4. 法阵缓缓旋转
-  if (magicCircle.open) magicCircle.rot += 0.06;
+  // 4. 法阵：展开后先不旋转，跟着手掌的拧动而旋转（外顺、中逆、内慢，整体放慢）
+  let twist = handTwistDelta();
+  if (magicCircle.open) magicCircle.rot += twist * 0.7;
   drawMagicCircle(magicCircle);
 
   // 5. 当前星座：被召唤时渐渐显形，否则悄悄消散
@@ -353,7 +354,8 @@ function updateStar(s) {
 
 // ★★★★★★ 第 3 步 开始：把这里的 drawMagicCircle 函数整个换成 Agent 写的版本 ★★★★★★
 function drawMagicCircle(mc) {
-  // 在画面中心画三层同心魔法阵：金色外环 + 蓝色中环 + 紫色内环，异速反向缓旋
+  // 在画面中心画三层同心魔法阵，每层都带发光效果（先画粗而淡的光晕底，再画细而亮的主线）
+  // 旋转由手掌拧动驱动：外环跟着手掌顺时针，中环同速反向（逆时针），内环同向但慢一半
   // 1. 法阵没有展开时什么都不画
   if (mc.open === false) {
     return;
@@ -361,51 +363,85 @@ function drawMagicCircle(mc) {
   // 2. 呼吸：整圈半径在 ±1% 之间轻轻缩放
   let breath = 1 + 0.01 * sin(frameCount * 0.05);
   let R = mc.R * breath;
-  // 3. 只画半透明的线条，不填充
+  // 3. 只画线条，不填充
   noFill();
-  strokeWeight(1);
 
-  // 4. 外环（金色）：双圆环 + 72 根刻度，跟着 mc.rot 慢慢转
+  // 4. 外环（金色，跟着手掌顺时针）：双圆环 + 72 根刻度
+  stroke(246, 200, 107, 26);
+  strokeWeight(7);
+  circle(mc.x, mc.y, 2 * R);
+  circle(mc.x, mc.y, 1.88 * R);
   stroke(246, 200, 107, 110);
+  strokeWeight(1);
   circle(mc.x, mc.y, 2 * R);
   circle(mc.x, mc.y, 1.88 * R);
   for (let i = 0; i < 72; i++) {
     let a = mc.rot + i * TWO_PI / 72;
-    line(mc.x + cos(a) * R, mc.y + sin(a) * R, mc.x + cos(a) * R * 0.94, mc.y + sin(a) * R * 0.94);
+    let x1 = mc.x + cos(a) * R;
+    let y1 = mc.y + sin(a) * R;
+    let x2 = mc.x + cos(a) * R * 0.94;
+    let y2 = mc.y + sin(a) * R * 0.94;
+    stroke(246, 200, 107, 26);
+    strokeWeight(7);
+    line(x1, y1, x2, y2); // 发光底
+    stroke(246, 200, 107, 110);
+    strokeWeight(1);
+    line(x1, y1, x2, y2); // 主线
   }
 
-  // 5. 中环（蓝色，反转 1.5 倍速）：24 段隔一画一的虚线圆弧 + 8 个菱形节点
-  stroke(111, 195, 255, 100);
+  // 5. 中环（蓝色，和外环同速、反向）：24 段虚线圆弧 + 8 个菱形节点
   let R2 = R * 0.68;
   for (let i = 0; i < 24; i += 2) {
-    let a = mc.rot * -1.5 + i * TWO_PI / 24;
-    arc(mc.x, mc.y, R2 * 2, R2 * 2, a, a + TWO_PI / 24);
+    let a = mc.rot * -1 + i * TWO_PI / 24;
+    stroke(111, 195, 255, 24);
+    strokeWeight(6);
+    arc(mc.x, mc.y, R2 * 2, R2 * 2, a, a + TWO_PI / 24); // 发光底
+    stroke(111, 195, 255, 100);
+    strokeWeight(1);
+    arc(mc.x, mc.y, R2 * 2, R2 * 2, a, a + TWO_PI / 24); // 主线
   }
   for (let i = 0; i < 8; i++) {
-    let a = mc.rot * -1.5 + i * TWO_PI / 8;
+    let a = mc.rot * -1 + i * TWO_PI / 8;
     let px = mc.x + cos(a) * R2;
     let py = mc.y + sin(a) * R2;
-    // 边长 6、旋转 45 度的小菱形：半个对角线约 4.24，用 4 条线连出 4 条边
+    // 边长 6、旋转 45 度的小菱形：半个对角线约 4.24
     let d = 4.24;
+    stroke(111, 195, 255, 24);
+    strokeWeight(5);
+    line(px, py - d, px + d, py);
+    line(px + d, py, px, py + d);
+    line(px, py + d, px - d, py);
+    line(px - d, py, px, py - d);
+    stroke(111, 195, 255, 100);
+    strokeWeight(1);
     line(px, py - d, px + d, py);
     line(px + d, py, px, py + d);
     line(px, py + d, px - d, py);
     line(px - d, py, px, py - d);
   }
 
-  // 6. 内环（紫色，正转 2.2 倍速）：12 个等分点“隔 5 个连 1 个”连成十二角星芒 + 中心小圆
-  stroke(167, 139, 250, 110);
+  // 6. 内环（紫色，和外环同向、速度慢一半）：十二角星芒 + 中心小圆
   let R3 = R * 0.42;
   let pts = [];
   for (let i = 0; i < 12; i++) {
-    let a = mc.rot * 2.2 + i * TWO_PI / 12;
+    let a = mc.rot * 0.5 + i * TWO_PI / 12;
     pts.push({ x: mc.x + cos(a) * R3, y: mc.y + sin(a) * R3 });
   }
   for (let i = 0; i < 12; i++) {
     let p1 = pts[i];
     let p2 = pts[(i + 5) % 12];
-    line(p1.x, p1.y, p2.x, p2.y);
+    stroke(167, 139, 250, 26);
+    strokeWeight(6);
+    line(p1.x, p1.y, p2.x, p2.y); // 发光底
+    stroke(167, 139, 250, 110);
+    strokeWeight(1);
+    line(p1.x, p1.y, p2.x, p2.y); // 主线
   }
+  stroke(167, 139, 250, 26);
+  strokeWeight(6);
+  circle(mc.x, mc.y, R * 0.16); // 中心小圆的发光底
+  stroke(167, 139, 250, 110);
+  strokeWeight(1);
   circle(mc.x, mc.y, R * 0.16);
 }
 // ★★★★★★ 第 3 步 结束 ★★★★★★
@@ -574,6 +610,31 @@ function drawShootingStar() {
   if (meteor.life >= meteor.maxLife || meteor.x < -100 || meteor.x > width + 100 || meteor.y > height + 100) {
     meteor = null;
   }
+}
+
+// ---------- 手掌拧动驱动法阵 ----------
+let prevHandAngle = null; // 上一帧手掌的朝向角度
+
+// 这一帧手掌拧动了多少角度（没有手、手刚出现、还没开始时都是 0）
+function handTwistDelta() {
+  if (!started || hands.length === 0) {
+    prevHandAngle = null;
+    return 0;
+  }
+  // 用手腕 (0) 指向手掌中心 (9) 的方向表示手掌的朝向
+  const p0 = hands[0].points[0];
+  const p9 = hands[0].points[9];
+  const angle = atan2(p9.y - p0.y, p9.x - p0.x);
+  if (prevHandAngle === null) {
+    prevHandAngle = angle;
+    return 0;
+  }
+  // 最短角度差（处理角度从 PI 跳到 -PI 的情况）
+  let delta = angle - prevHandAngle;
+  delta = atan2(sin(delta), cos(delta));
+  prevHandAngle = angle;
+  // 限制每帧最大拧动，防止识别抖动带着法阵猛转
+  return constrain(delta, -0.18, 0.18);
 }
 
 // 叮——星星越多，音越高
