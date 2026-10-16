@@ -157,9 +157,12 @@ let showInfo = true;
 let chime, chimeEnv;
 // 法阵展开时的音效（🖐 张开手掌时播放）
 let magicSound;
+// 点亮引导星时的音效（☝️ 食指向上时播放）
+let guideSound;
 
 function preload() {
   magicSound = loadSound("freesound_community-soul-steal-01-98129.mp3");
+  guideSound = loadSound("benkirb-shine-1-268902.mp3");
 }
 
 function setup() {
@@ -440,10 +443,13 @@ function onGesture(g, hand) {
   // 1. 食指指尖和手掌中心
   let tip = hand.points[8];
   let palm = hand.points[9];
-  // 2. ☝️ 食指向上：在指尖点亮一颗引导星（星星越多，叮声越高）
+  // 2. ☝️ 食指向上：在指尖点亮一颗引导星，同时播放点星音效（星星越多，叮声越高）
   if (g === "Pointing_Up" && stars.length < MAX_STARS) {
     spawnGuideStar(tip.x, tip.y);
     playStarNote(stars.length);
+    if (guideSound && guideSound.isLoaded()) {
+      guideSound.play();
+    }
   }
   // 3. 🖐 张开手掌：召唤三层法阵，由内向外展开，同时播放法阵音效
   if (g === "Open_Palm" && magicCircle.open === false) {
