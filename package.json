@@ -1,0 +1,9 @@
+{
+  "name": "my-zodiac-circle",
+  "private": true,
+  "version": "0.1.0",
+  "description": "梦幻星空 · 星座法阵（手势互动课作业）",
+  "scripts": {
+    "dev": "node dev-server.js"
+  }
+}

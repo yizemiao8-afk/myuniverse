@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>梦幻星空 · 星座法阵 — 用手势指挥一片星空</title>
+  <link rel="stylesheet" href="style.css">
+
+  <!-- p5.js + p5.sound：先用国内镜像 npmmirror，打不开就自动换成 jsDelivr -->
+  <script src="https://registry.npmmirror.com/p5/1.11.10/files/lib/p5.min.js"></script>
+  <script>window.p5 || document.write('<script src="https://cdn.jsdelivr.net/npm/p5@1.11.10/lib/p5.min.js"><\/script>')</script>
+  <script src="https://registry.npmmirror.com/p5/1.11.10/files/lib/addons/p5.sound.min.js"></script>
+  <script>(window.p5 && window.p5.SoundFile) || document.write('<script src="https://cdn.jsdelivr.net/npm/p5@1.11.10/lib/addons/p5.sound.min.js"><\/script>')</script>
+  <!-- MediaPipe 手势模型在 sketch.js 里面加载 -->
+  <script src="constellations.js"></script>
+  <script src="sketch.js"></script>
+</head>
+<body>
+  <div id="intro">
+    <div class="card">
+      <h1>梦幻星空</h1>
+      <p class="sub">星座法阵 · 用手势指挥一片星空</p>
+      <ul>
+        <li>星星会闪烁、漂移，听从你的指挥汇聚成星座</li>
+        <li>☝️ <b>食指向上</b> → 在指尖点亮一颗引导星（叮——）</li>
+        <li>🖐 <b>张开手掌</b> → 召唤金、蓝、紫三层同心法阵</li>
+        <li>👍 <b>拇指向上</b> → 星星拖着光尾汇聚，星座显形</li>
+        <li>✊ <b>握拳</b> → 一切向中心收拢归寂</li>
+        <li>🤟 <b>我爱你</b> → 切换到下一个星座</li>
+        <li>✌️ <b>剪刀手</b> → 换一片新星空</li>
+        <li>按键：<kbd>S</kbd> 保存 · <kbd>V</kbd> 摄像头 · <kbd>I</kbd> 手势信息</li>
+      </ul>
+      <button id="start">进入星空</button>
+    </div>
+  </div>
+  <div id="status"></div>
+</body>
+</html>
