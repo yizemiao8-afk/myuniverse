@@ -150,6 +150,11 @@ let current = 0;       // 现在是哪一个星座
 let summoned = false;  // 星座是否被召唤（连线是否渐显）
 let lastGesture = {};
 let showInfo = true;
+let hintUntil = 0; // 👍 提示文字显示的截止帧（到时间自动恢复默认提示）
+
+// 十二星座符号（白羊座~双鱼座，与 constellations.js 的顺序一致；带文本变体符避免渲染成彩色 emoji）
+const ZODIAC_GLYPHS = ["♈︎", "♉︎", "♊︎", "♋︎", "♌︎", "♍︎", "♎︎", "♏︎", "♐︎", "♑︎", "♒︎", "♓︎"];
+const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII"]; // 外圈装饰用的罗马数字
 
 // ---------- 星空视差背景（图层全部来自壁纸《Starry Sky︱星空》，深度照搬原场景） ----------
 const BG_W = 1920, BG_H = 1080; // 壁纸的设计分辨率，所有图层坐标都基于它
@@ -189,6 +194,7 @@ function preload() {
 function setup() {
   createCanvas(windowWidth, windowHeight);
   magicCircle = { x: width / 2, y: height / 2, R: min(width, height) * 0.32, rot: 0, open: false };
+  initStarDisk(); // 洗乱星盘外圈和中圈的星座顺序
   initStars();
   initBokehs();
   layoutConstellations();
@@ -295,10 +301,27 @@ function draw() {
   // 流星：偶尔从天空划过
   drawShootingStar();
 
-  // 4. 法阵：展开后先不旋转，跟着手掌的拧动而旋转（外顺、中逆、内慢，整体放慢）
+  // 4. 星盘：展开后先不旋转，跟着手掌拧动而旋转（外顺、中逆、内慢）
+  //    两圈的「当前星座」对齐即解密成功：整盘变金黄高亮，锁定旋转并吸附到完美角度
   let twist = handTwistDelta();
-  if (magicCircle.open) magicCircle.rot += twist * 0.7;
+  if (magicCircle.open && !magicCircle.solved) {
+    magicCircle.rot += twist * 0.7;
+    checkStarDiskAlign();
+  }
+  if (magicCircle.solved) {
+    magicCircle.rot = lerp(magicCircle.rot, magicCircle.snapRot, 0.18);
+  }
   drawMagicCircle(magicCircle);
+  // 关卡提示（顶部一行小字）
+  if (magicCircle.open && !summoned) {
+    noStroke();
+    textAlign(CENTER, CENTER);
+    textSize(16);
+    fill(255, 224, 150, 200);
+    text(magicCircle.solved
+      ? `星盘已对齐 ✨ 比 👍 显现「${zodiacs[current].name}」`
+      : `拧动手掌，让外圈与中圈的「${zodiacs[current].name}」相遇`, width / 2, 36);
+  }
 
   // 5. 当前星座：被召唤时渐渐显形，否则悄悄消散
   const z = zodiacs[current];
@@ -323,6 +346,12 @@ function draw() {
       circle(hand.points[8].x, hand.points[8].y, 10);
     }
     if (showInfo) drawGestureInfo();
+  }
+
+  // 7. 👍 提示文字到时间自动消退
+  if (hintUntil && frameCount > hintUntil) {
+    setStatus("把手伸到摄像头前，做一个手势 ✋");
+    hintUntil = 0;
   }
 }
 
@@ -385,145 +414,187 @@ function updateStar(s) {
 // ★★★★★★ 第 2 步 结束 ★★★★★★
 
 // ★★★★★★ 第 3 步 开始：把这里的 drawMagicCircle 函数整个换成 Agent 写的版本 ★★★★★★
+// 洗乱星盘外圈和中圈的星座顺序（每次召唤新关卡时调用）
+function initStarDisk() {
+  const mc = magicCircle;
+  const base = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+  mc.outerOrder = shuffle(base.slice());
+  mc.midOrder = shuffle(base.slice());
+  mc.solved = false;
+  mc.solvedT = 0;
+  // 避免一开局就对齐：如果当前星座两圈恰好重合，重洗中圈
+  const step = TWO_PI / 12;
+  let guard = 0;
+  while (guard++ < 30) {
+    let delta = 2 * mc.rot + (mc.outerOrder.indexOf(current) - mc.midOrder.indexOf(current)) * step;
+    delta = atan2(sin(delta), cos(delta));
+    if (abs(delta) >= 0.15) break;
+    mc.midOrder = shuffle(base.slice());
+  }
+}
+
+// 每一帧检查：外圈和中圈的「当前星座」是否转到了同一角度（对齐即解密成功）
+function checkStarDiskAlign() {
+  const mc = magicCircle;
+  const step = TWO_PI / 12;
+  const i = mc.outerOrder.indexOf(current);
+  const j = mc.midOrder.indexOf(current);
+  // 外圈图标的角度是 rot + i*30°，中圈是 -rot + j*30°，两者的差：
+  let delta = 2 * mc.rot + (i - j) * step;
+  delta = atan2(sin(delta), cos(delta)); // 收拢到 ±180°
+  if (abs(delta) < 0.04) { // 约 2.3°：两枚图标重合
+    mc.solved = true;
+    mc.flashT = frameCount;
+    mc.snapRot = mc.rot - delta / 2; // 吸附到完美对齐的角度
+  }
+}
+
 function drawMagicCircle(mc) {
-  // 参考《法术设计·阵法》的高亮金色法阵：每条线都画好几层，外层粗而淡、内层细而亮，
-  // 再用加法混合（ADD）把重叠的金光烧成白亮——这就是“高亮魔法感”的关键
-  // 旋转仍由手掌拧动驱动：外环顺时针，中环同速反向，内环同向但慢一半
-  // 1. 法阵没有展开时什么都不画
+  // 星盘解密：外圈十二星座徽章 + 中圈细环十二星座 + 内层“宇宙之眼”
+  // 旋转仍由手掌拧动驱动：外环顺时针，中环同速反向，内层同向但慢一半
+  // 所有线条画好几层（外晕→中晕→主色→白热芯）并用加法混合，重叠处自然烧成白亮
+  // 1. 星盘没有展开时什么都不画
   if (mc.open === false) {
     mc.openT = 0;
     return;
   }
-  // 2. 展开动画：每次召唤都刷新一炉光尘，法阵带一点回弹地放大浮现
+  // 2. 展开动画：每次召唤刷新一炉光尘，星盘带一点回弹地放大浮现
   if (mc.openT === 0 || mc.openT === undefined) initMagicMotes();
   mc.openT = min(1, mc.openT + 0.045);
   const appear = mc.openT;
   const ease = 1 + 2.7 * pow(appear - 1, 3) + 1.7 * pow(appear - 1, 2); // easeOutBack 回弹
-  // 3. 呼吸：半径轻轻起伏，辉光也跟着一明一暗
+  // 3. 呼吸 + 解密状态过渡（gold：0 未解密 → 1 金黄高亮）
   const breath = 1 + 0.01 * sin(frameCount * 0.05);
   const pulse = (0.72 + 0.28 * sin(frameCount * 0.04)) * appear;
+  mc.solvedT = lerp(mc.solvedT || 0, mc.solved ? 1 : 0, 0.08);
+  const gold = mc.solvedT;
+  const boost = 1 + gold * 0.45; // 解密后整盘提亮
   const R = mc.R * breath * ease;
   const cx = mc.x, cy = mc.y;
-  const smallScreen = min(width, height) < 600; // 小屏减量，手机更流畅
 
   noFill();
   blendMode(ADD); // 加法混合：金光叠金光会越来越亮，直到白热
 
-  // 4. 底座光晕：法阵底下一团柔和的径向金光，把法阵“托”起来
+  // 4. 底座光晕：星盘底下一团柔和的径向金光
   for (let k = 4; k >= 1; k--) {
-    stroke(255, 196, 90, 6 * pulse);
+    stroke(255, 196, 90, (5 + gold * 5) * pulse);
     strokeWeight(R * 0.10 * k);
     circle(cx, cy, 2 * R);
   }
 
-  // 5. 外环（深金，跟着手掌顺时针）：双圆环 + 符文带 + 八支光矛 + 八颗菱形宝石
   const rotO = mc.rot;
-  magicRing(cx, cy, 2 * R, 255, 200, 95, 2.2, 130 * pulse);
-  magicRing(cx, cy, 1.88 * R, 255, 200, 95, 1.6, 110 * pulse);
-  // 符文带：两环之间一圈伪符文（短竖、小尖角、竖加点、交叉），按位置确定地变化
-  const runeCount = smallScreen ? 24 : 48;
-  for (let i = 0; i < runeCount; i++) {
-    const a = rotO + (i * TWO_PI) / runeCount;
+  const rotM = mc.rot * -1;
+  const rotI = mc.rot * 0.5;
+  const step = TWO_PI / 12;
+  const slotI = mc.outerOrder.indexOf(current); // 当前星座在外圈的槽位
+  const slotJ = mc.midOrder.indexOf(current);   // 当前星座在中圈的槽位
+
+  // 5. 外圈（深金，跟着手掌顺时针）：双圆环 + 十二根辐条 + 罗马数字带 + 十二星座徽章
+  magicRing(cx, cy, 2 * R, 255, 200, 95, 2.2, 130 * pulse * boost);
+  magicRing(cx, cy, 1.88 * R, 255, 200, 95, 1.6, 110 * pulse * boost);
+  magicRing(cx, cy, 1.52 * R, 255, 200, 95, 1, 80 * pulse * boost); // 数字带内缘
+  for (let k = 0; k < 12; k++) {
+    const a = rotO + (k + 0.5) * step;
+    magicLine(cx + cos(a) * R * 0.76, cy + sin(a) * R * 0.76,
+              cx + cos(a) * R * 1.08, cy + sin(a) * R * 1.08,
+              255, 205, 100, 1.1, 85 * pulse * boost); // 辐条伸出外圈一点，像参考图放射的光芒
+  }
+  for (let k = 0; k < 12; k++) {
+    const a = rotO + k * step;
+    zodiacGlyph(ROMAN[k], cx + cos(a) * R * 0.80, cy + sin(a) * R * 0.80,
+                R * 0.07, a + HALF_PI, 0.45 * pulse * boost, false);
+  }
+  for (let k = 0; k < 12; k++) {
+    const a = rotO + k * step;
+    const z = mc.outerOrder[k];
+    const isTarget = z === current;
     const px = cx + cos(a) * R * 0.94;
     const py = cy + sin(a) * R * 0.94;
-    const s = R * 0.018;
-    push();
-    translate(px, py);
-    rotate(a + HALF_PI);
-    const pat = (i * 5 + 3) % 4;
-    if (pat === 0) {
-      magicLine(0, -s, 0, s, 255, 205, 100, 1, 120 * pulse);
-    } else if (pat === 1) {
-      magicLine(-s * 0.6, s * 0.6, 0, -s, 255, 205, 100, 1, 120 * pulse);
-      magicLine(s * 0.6, s * 0.6, 0, -s, 255, 205, 100, 1, 120 * pulse);
-    } else if (pat === 2) {
-      magicLine(0, -s, 0, s * 0.4, 255, 205, 100, 1, 120 * pulse);
-      stroke(255, 220, 140, 150 * pulse);
-      strokeWeight(2.5);
-      point(0, s * 0.9);
-    } else {
-      magicLine(-s * 0.5, -s, s * 0.5, s, 255, 205, 100, 1, 120 * pulse);
-      magicLine(s * 0.5, -s, -s * 0.5, s, 255, 205, 100, 1, 120 * pulse);
+    if (isTarget) { // 目标星座背后点一枚徽章光斑，提示玩家要追的就是它
+      noStroke();
+      fill(255, 214, 120, 34 * pulse);
+      circle(px, py, R * 0.16);
+      noFill();
     }
-    pop();
-  }
-  // 八支光矛：法阵最外圈的尖刺剪影（参考图里最醒目的轮廓）
-  for (let i = 0; i < 8; i++) {
-    const a = rotO + (i * TWO_PI) / 8;
-    const dA = 0.022; // 矛底半宽（弧度）
-    const tX = cx + cos(a) * R * 1.17, tY = cy + sin(a) * R * 1.17; // 矛尖
-    magicLine(cx + cos(a - dA) * R, cy + sin(a - dA) * R, tX, tY, 255, 214, 120, 1.4, 130 * pulse);
-    magicLine(cx + cos(a + dA) * R, cy + sin(a + dA) * R, tX, tY, 255, 214, 120, 1.4, 130 * pulse);
-    magicLine(cx + cos(a) * R * 0.99, cy + sin(a) * R * 0.99, tX, tY, 255, 230, 160, 0.8, 110 * pulse); // 矛脊
-  }
-  // 八颗菱形宝石：挂在光矛之间，沿径向摆放，中心一点白亮
-  for (let i = 0; i < 8; i++) {
-    const a = rotO + ((i + 0.5) * TWO_PI) / 8;
-    push();
-    translate(cx + cos(a) * R * 1.02, cy + sin(a) * R * 1.02);
-    rotate(a + HALF_PI);
-    const dR = R * 0.045, dT = R * 0.026;
-    magicLine(0, -dR, dT, 0, 255, 224, 150, 1.2, 140 * pulse);
-    magicLine(dT, 0, 0, dR, 255, 224, 150, 1.2, 140 * pulse);
-    magicLine(0, dR, -dT, 0, 255, 224, 150, 1.2, 140 * pulse);
-    magicLine(-dT, 0, 0, -dR, 255, 224, 150, 1.2, 140 * pulse);
-    noStroke();
-    fill(255, 246, 220, 200 * pulse);
-    circle(0, 0, 3.2);
-    noFill();
-    pop();
+    zodiacGlyph(ZODIAC_GLYPHS[z], px, py, R * (isTarget ? 0.14 : 0.115), a + HALF_PI,
+                (isTarget ? 1 : 0.8) * pulse * boost, isTarget || gold > 0.5);
   }
 
-  // 6. 中环（亮金，和外环同速、反向）：24 段虚线圆弧 + 12 颗光珠
-  const rotM = mc.rot * -1;
-  const R2 = R * 0.68;
-  for (let i = 0; i < 24; i += 2) {
-    const a = rotM + (i * TWO_PI) / 24;
-    magicArc(cx, cy, R2 * 2, a, a + TWO_PI / 24, 255, 218, 130, 1.8, 120 * pulse);
+  // 6. 中圈（细一点的十二星座层，和外圈同速、反向）
+  magicRing(cx, cy, 1.32 * R, 255, 214, 120, 1.2, 100 * pulse * boost);
+  magicRing(cx, cy, 1.22 * R, 255, 214, 120, 1.2, 100 * pulse * boost);
+  for (let k = 0; k < 12; k++) {
+    const a = rotM + k * step;
+    const z = mc.midOrder[k];
+    const isTarget = z === current;
+    const px = cx + cos(a) * R * 1.27;
+    const py = cy + sin(a) * R * 1.27;
+    if (isTarget) {
+      noStroke();
+      fill(255, 214, 120, 30 * pulse);
+      circle(px, py, R * 0.12);
+      noFill();
+    }
+    zodiacGlyph(ZODIAC_GLYPHS[z], px, py, R * (isTarget ? 0.105 : 0.085), a + HALF_PI,
+                (isTarget ? 0.95 : 0.6) * pulse * boost, isTarget || gold > 0.5);
   }
-  for (let i = 1; i < 24; i += 2) {
-    const a = rotM + (i * TWO_PI) / 24;
-    const px = cx + cos(a) * R2;
-    const py = cy + sin(a) * R2;
+
+  // 7. 目标对齐指针：两枚目标图标只会在一个固定角度相遇，在那里画一道细细的光标提示
+  if (!mc.solved) {
+    const meetA = (slotI + slotJ) * step * 0.5;
+    const tw = 0.5 + 0.5 * sin(frameCount * 0.06);
+    magicLine(cx + cos(meetA) * R * 0.60, cy + sin(meetA) * R * 0.60,
+              cx + cos(meetA) * R * 1.10, cy + sin(meetA) * R * 1.10,
+              255, 230, 160, 1, (20 + 25 * tw) * pulse);
     noStroke();
-    fill(255, 218, 130, 40 * pulse);
-    circle(px, py, 12);
-    fill(255, 246, 220, 220 * pulse);
-    circle(px, py, 3.5);
+    fill(255, 230, 160, (80 + 60 * tw) * pulse);
+    circle(cx + cos(meetA) * R * 1.11, cy + sin(meetA) * R * 1.11, 5);
     noFill();
   }
 
-  // 7. 内环（淡金白，和外环同向、速度慢一半）：十二瓣曼陀罗 + 六角星 + 中心圆
-  const rotI = mc.rot * 0.5;
-  const R3 = R * 0.42;
-  for (let i = 0; i < 12; i++) {
-    push();
-    translate(cx, cy);
-    rotate(rotI + (i * TWO_PI) / 12);
-    magicEllipse(R3 * 0.52, 0, R3 * 0.58, R3 * 0.24, 255, 236, 180, 1.2, 110 * pulse);
-    pop();
+  // 8. 内层：参考图中央的“宇宙之眼”（慢速同向旋转；未解密幽蓝，解密后转金黄）
+  const eyeR = lerp(130, 255, gold), eyeG = lerp(185, 224, gold), eyeB = lerp(255, 150, gold);
+  // 12 道旋转光束
+  for (let k = 0; k < 12; k++) {
+    const a = rotI + k * step;
+    magicLine(cx + cos(a) * R * 0.17, cy + sin(a) * R * 0.17,
+              cx + cos(a) * R * 0.58, cy + sin(a) * R * 0.58,
+              eyeR, eyeG, eyeB, 0.8, 26 * pulse * boost);
   }
-  magicRing(cx, cy, R * 0.16, 255, 236, 180, 1.4, 120 * pulse);
-  // 六角星：两个三角形交错叠成
-  for (let k = 0; k < 2; k++) {
-    for (let j = 0; j < 3; j++) {
-      const a1 = rotI + k * (PI / 3) + (j * TWO_PI) / 3;
-      const a2 = rotI + k * (PI / 3) + ((j + 1) * TWO_PI) / 3;
-      magicLine(cx + cos(a1) * R * 0.075, cy + sin(a1) * R * 0.075,
-                cx + cos(a2) * R * 0.075, cy + sin(a2) * R * 0.075,
-                255, 240, 200, 1, 120 * pulse);
-    }
-  }
-  // 中心光核：一小团白热的光
+  // 眼睑双弧：两条交叉的椭圆弧，像包住光球的眼形
+  push();
+  translate(cx, cy);
+  rotate(rotI * 0.6);
+  magicEllipseArc(0, 0, R * 1.04, R * 0.5, PI * 0.10, PI * 0.90, eyeR, eyeG, eyeB, 2, 90 * pulse * boost);
+  magicEllipseArc(0, 0, R * 1.04, R * 0.5, PI * 1.10, PI * 1.90, eyeR, eyeG, eyeB, 2, 90 * pulse * boost);
+  pop();
+  // 眼球：幽蓝（或金黄）的星云球 + 白热星核
   noStroke();
-  for (let k = 4; k >= 1; k--) {
-    fill(255, 232, 170, 10 * pulse);
-    circle(cx, cy, R * 0.06 * k);
+  fill(lerp(10, 72, gold), lerp(24, 46, gold), lerp(64, 12, gold), 150 * pulse);
+  circle(cx, cy, R * 0.38);
+  magicRing(cx, cy, R * 0.38, eyeR, eyeG, eyeB, 2, 120 * pulse * boost);
+  magicRing(cx, cy, R * 0.30, eyeR, eyeG, eyeB, 1.2, 90 * pulse * boost);
+  // 球内星云微光
+  fill(eyeR, eyeG, eyeB, 26 * pulse);
+  circle(cx - R * 0.05, cy - R * 0.04, R * 0.16);
+  circle(cx + R * 0.06, cy + R * 0.05, R * 0.12);
+  // 白热星核
+  for (let k = 3; k >= 1; k--) {
+    fill(255, 250, 235, 26 * pulse * boost);
+    circle(cx, cy, R * 0.05 * k);
   }
-  fill(255, 250, 230, 180 * pulse);
-  circle(cx, cy, R * 0.02);
+  fill(255, 252, 244, 220 * pulse);
+  circle(cx, cy, R * 0.03);
 
-  // 8. 光尘：金色光点在法阵里慢慢环绕、忽明忽暗（参考图里飞舞的光点）
+  // 9. 解密成功瞬间：一圈金光冲击波
+  const f = frameCount - (mc.flashT === undefined ? -999 : mc.flashT);
+  if (f >= 0 && f < 45) {
+    magicRing(cx, cy, 2 * R * (0.3 + f / 45), 255, 240, 200, 3, 190 * (1 - f / 45));
+    fill(255, 246, 220, 60 * (1 - f / 45));
+    circle(cx, cy, 2 * R);
+  }
+
+  // 10. 光尘：金色光点在星盘里慢慢环绕、忽明忽暗
   for (const m of magicMotes) {
     const a = m.a0 + frameCount * m.spd;
     const px = cx + cos(a) * R * m.rr;
@@ -570,39 +641,46 @@ function magicRing(x, y, d, r, g, b, w, a) {
   circle(x, y, d);
 }
 
-// 多层发光圆弧
-function magicArc(x, y, d, a0, a1, r, g, b, w, a) {
-  stroke(r, g, b, a * 0.10);
-  strokeWeight(w * 5);
-  arc(x, y, d, d, a0, a1);
-  stroke(r, g, b, a * 0.30);
-  strokeWeight(w * 2.2);
-  arc(x, y, d, d, a0, a1);
-  stroke(r, g, b, a);
-  strokeWeight(w);
-  arc(x, y, d, d, a0, a1);
-  stroke(255, 246, 220, a * 0.85);
-  strokeWeight(max(w * 0.4, 0.6));
-  arc(x, y, d, d, a0, a1);
-}
-
-// 多层发光椭圆（曼陀罗花瓣）
-function magicEllipse(x, y, w, h, r, g, b, wt, a) {
+// 多层发光椭圆弧（宇宙之眼的眼睑）
+function magicEllipseArc(x, y, w, h, a0, a1, r, g, b, wt, a) {
   stroke(r, g, b, a * 0.10);
   strokeWeight(wt * 5);
-  ellipse(x, y, w, h);
+  arc(x, y, w, h, a0, a1);
   stroke(r, g, b, a * 0.30);
   strokeWeight(wt * 2.2);
-  ellipse(x, y, w, h);
+  arc(x, y, w, h, a0, a1);
   stroke(r, g, b, a);
   strokeWeight(wt);
-  ellipse(x, y, w, h);
-  stroke(255, 246, 220, a * 0.8);
+  arc(x, y, w, h, a0, a1);
+  stroke(255, 246, 220, a * 0.85);
   strokeWeight(max(wt * 0.4, 0.6));
-  ellipse(x, y, w, h);
+  arc(x, y, w, h, a0, a1);
 }
 
-// 法阵里环绕的金色光尘
+// 发光字符：星座符号和罗马数字（用画布阴影做辉光，白热芯可选）
+function zodiacGlyph(txt, x, y, size, rot, alpha, hot) {
+  const a = min(1, alpha);
+  push();
+  translate(x, y);
+  rotate(rot); // 沿圆环切线方向，字顶朝外
+  textAlign(CENTER, CENTER);
+  textSize(size);
+  textFont("'Segoe UI Symbol', 'Noto Sans Symbols 2', 'Apple Symbols', serif");
+  noStroke();
+  drawingContext.shadowColor = `rgba(255, 214, 120, ${0.9 * a})`;
+  drawingContext.shadowBlur = size * 0.5;
+  fill(255, 222, 140, 255 * a);
+  text(txt, 0, 0);
+  text(txt, 0, 0); // 画两遍，辉光更实
+  drawingContext.shadowBlur = 0;
+  if (hot) { // 白热芯：目标星座或解密后整盘
+    fill(255, 252, 240, 230 * a);
+    text(txt, 0, 0);
+  }
+  pop();
+}
+
+// 星盘里环绕的金色光尘
 let magicMotes = [];
 function initMagicMotes() {
   magicMotes = [];
@@ -663,10 +741,17 @@ function onGesture(g, hand) {
   if (g === "Open_Palm" && magicCircle.open === false) {
     magicCircle.open = true;
   }
-  // 4. 👍 拇指向上：漫天星星拖着光尾向星座汇聚；再比一次 👍 取消汇聚
+  // 4. 👍 拇指向上：星盘对齐后，星星拖着光尾汇聚成本关星座；再比一次 👍 取消汇聚
   if (g === "Thumb_Up") {
-    if (summoned) unsummonConstellation();
-    else summonConstellation();
+    if (magicCircle.open && magicCircle.solved) {
+      if (summoned) unsummonConstellation();
+      else summonConstellation();
+    } else {
+      setStatus(magicCircle.open
+        ? `先拧动星盘，让外圈与中圈的「${zodiacs[current].name}」对齐 ✨`
+        : "先张开手掌 🖐 召唤星盘");
+      hintUntil = frameCount + 300;
+    }
   }
   // 5. ✊ 握拳：一切向中心收拢归寂
   if (g === "Closed_Fist") {
@@ -719,11 +804,12 @@ function dismissAll() {
   magicCircle.open = false;
 }
 
-// 👎 星座消散，切换到下一个星座
+// 👎 下一关：星座消散，星盘重新打乱，解密重新开始
 function nextConstellation() {
   for (const s of stars) s.hasTarget = false;
   summoned = false;
   current = (current + 1) % zodiacs.length;
+  initStarDisk(); // 外圈和中圈重新乱序
 }
 
 // ✌️ 换一片新星空
