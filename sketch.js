@@ -444,7 +444,6 @@ function checkStarDiskAlign() {
   delta = atan2(sin(delta), cos(delta)); // 收拢到 ±180°
   if (abs(delta) < 0.04) { // 约 2.3°：两枚图标重合
     mc.solved = true;
-    mc.flashT = frameCount;
     mc.snapRot = mc.rot - delta / 2; // 吸附到完美对齐的角度
   }
 }
@@ -463,11 +462,11 @@ function drawMagicCircle(mc) {
   mc.openT = min(1, mc.openT + 0.045);
   const appear = mc.openT;
   const ease = 1 + 2.7 * pow(appear - 1, 3) + 1.7 * pow(appear - 1, 2); // easeOutBack 回弹
-  // 3. 呼吸 + 解密状态过渡（gold：0 未解密 → 1 金黄高亮）
-  const breath = 1 + 0.01 * sin(frameCount * 0.05);
-  const pulse = (0.72 + 0.28 * sin(frameCount * 0.04)) * appear;
+  // 3. 呼吸 + 解密状态过渡（gold：0 未解密 → 1 金黄高亮；解密后轮廓更亮、呼吸更重）
   mc.solvedT = lerp(mc.solvedT || 0, mc.solved ? 1 : 0, 0.08);
   const gold = mc.solvedT;
+  const breath = 1 + (0.01 + gold * 0.02) * sin(frameCount * 0.05);
+  const pulse = (0.72 + (0.28 + gold * 0.22) * sin(frameCount * 0.04)) * appear;
   const boost = 1 + gold * 0.45; // 解密后整盘提亮
   const R = mc.R * breath * ease;
   const cx = mc.x, cy = mc.y;
@@ -586,15 +585,7 @@ function drawMagicCircle(mc) {
   fill(255, 252, 244, 220 * pulse);
   circle(cx, cy, R * 0.03);
 
-  // 9. 解密成功瞬间：一圈金光冲击波
-  const f = frameCount - (mc.flashT === undefined ? -999 : mc.flashT);
-  if (f >= 0 && f < 45) {
-    magicRing(cx, cy, 2 * R * (0.3 + f / 45), 255, 240, 200, 3, 190 * (1 - f / 45));
-    fill(255, 246, 220, 60 * (1 - f / 45));
-    circle(cx, cy, 2 * R);
-  }
-
-  // 10. 光尘：金色光点在星盘里慢慢环绕、忽明忽暗
+  // 9. 光尘：金色光点在星盘里慢慢环绕、忽明忽暗
   for (const m of magicMotes) {
     const a = m.a0 + frameCount * m.spd;
     const px = cx + cos(a) * R * m.rr;
